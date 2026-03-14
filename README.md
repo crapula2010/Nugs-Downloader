@@ -19,7 +19,8 @@ python -m venv p3venv
 
 ## Config
 
-Set credentials and defaults in `config.json`.
+Copy `config.example.json` to `config.json` and set your local credentials there.
+`config.json` is intentionally gitignored and must not be committed.
 
 | Option | Info |
 | --- | --- |
