@@ -10,7 +10,8 @@ Dependencies:
 Usage:
     python main.py <url> [<url>...]
 
-The downloader reads defaults from `config.json` in the same directory.
+The downloader reads defaults from `config.json` in the same directory,
+or from the path in `NUGS_CONFIG_PATH` when set.
 """
 
 import argparse
@@ -142,6 +143,13 @@ def get_script_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def get_config_path() -> Path:
+    config_path = os.environ.get("NUGS_CONFIG_PATH", "").strip()
+    if config_path:
+        return Path(config_path).expanduser()
+    return get_script_dir() / "config.json"
+
+
 def read_txt_file(path: str) -> List[str]:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         return [line.strip() for line in f if line.strip()]
@@ -168,7 +176,8 @@ def process_urls(urls: List[str]) -> List[str]:
 
 
 def read_config() -> Config:
-    with open("config.json", "r", encoding="utf-8") as f:
+    config_path = get_config_path()
+    with open(config_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return Config(**data)
 

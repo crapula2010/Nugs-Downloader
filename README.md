@@ -110,6 +110,40 @@ curl -sS -X POST http://127.0.0.1:8090/jobs \
 
 `POST /config` controls the server's concurrency limit. Jobs above the limit stay queued until a slot is free. Download history is stored in `download_history.sqlite3`.
 
+## Install As Linux Service
+
+You can install the API as a systemd service with [scripts/install_linux_service.sh](scripts/install_linux_service.sh).
+
+Install using an existing config file:
+
+```bash
+sudo ./scripts/install_linux_service.sh --config ./config.json
+```
+
+Install and prompt for email/password:
+
+```bash
+sudo ./scripts/install_linux_service.sh --prompt
+```
+
+Useful options:
+
+- `--host 0.0.0.0`
+- `--port 8090`
+- `--service-name nugs-downloader`
+- `--python /path/to/python`
+- `--skip-enable` (install unit file only)
+
+The installer writes service config to `/etc/<service-name>/config.json`, configures `NUGS_CONFIG_PATH` for the service process, and installs `/etc/systemd/system/<service-name>.service`.
+
+Service management commands:
+
+```bash
+sudo systemctl status nugs-downloader.service
+sudo systemctl restart nugs-downloader.service
+sudo journalctl -u nugs-downloader.service -f
+```
+
 ## Disclaimer
 
 - You are responsible for how you use this project.
