@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nugs Downloader Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f6f2e9;
+      --panel: #fffdf8;
+      --ink: #1e1c18;
+      --muted: #6b655d;
+      --line: #d5cfc4;
+      --teal: #0f7c82;
+      --orange: #cb6930;
+      --green: #2d8f43;
+      --red: #b9372f;
+      --amber: #9a6d10;
+      --mono: "IBM Plex Mono", "Courier New", monospace;
+      --sans: "Space Grotesk", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 88% 10%, rgba(15, 124, 130, 0.12), transparent 30%),
+        radial-gradient(circle at 4% 85%, rgba(203, 105, 48, 0.14), transparent 28%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+      display: grid;
+      gap: 18px;
+      animation: fadeUp 440ms ease-out;
+    }
+
+    .hero {
+      background: linear-gradient(145deg, #1f1c16, #2d2b27 70%);
+      color: #f8f5ef;
+      border: 1px solid #3d3a34;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 14px 30px rgba(20, 17, 10, 0.3);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 10px 0 8px;
+      font-size: clamp(1.45rem, 2.6vw, 2.15rem);
+      line-height: 1.15;
+    }
+
+    .sub {
+      margin: 0;
+      color: #ddd7cc;
+      max-width: 880px;
+      line-height: 1.45;
+      font-size: 0.98rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(320px, 430px) 1fr;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(43, 36, 26, 0.08);
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+      letter-spacing: 0.02em;
+    }
+
+    .hint {
+      margin: -3px 0 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
+    label {
+      display: block;
+      margin: 0 0 6px;
+      font-size: 0.88rem;
+      color: #3d392f;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    select {
+      width: 100%;
+      border: 1px solid #cfc7bc;
+      border-radius: 10px;
+      font-family: var(--sans);
+      background: #fff;
+      color: var(--ink);
+      padding: 10px 11px;
+      font-size: 0.95rem;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(15, 124, 130, 0.16);
+    }
+
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .checks {
+      border: 1px dashed #c9c0b4;
+      border-radius: 12px;
+      padding: 10px;
+      background: #faf7f0;
+      margin: 2px 0 12px;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 5px 0;
+      color: #2f2a21;
+      font-size: 0.92rem;
+    }
+
+    .check input {
+      accent-color: var(--teal);
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 11px;
+      padding: 10px 13px;
+      font-family: var(--sans);
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 80ms ease, opacity 120ms ease, background 120ms ease;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--teal), #0c5f64);
+      color: #fff;
+      width: 100%;
+    }
+
+    .btn-muted {
+      background: #efe8dc;
+      border-color: #d8cfc2;
+      color: #2d2a23;
+    }
+
+    .btn-warn {
+      background: #f8dcd3;
+      border-color: #e4b9a8;
+      color: #7a2b17;
+    }
+
+    .msg {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      display: none;
+    }
+
+    .msg.show {
+      display: block;
+    }
+
+    .msg.info {
+      background: #e8f3f4;
+      border: 1px solid #c6e1e3;
+      color: #164a4f;
+    }
+
+    .msg.warn {
+      background: #faecd9;
+      border: 1px solid #efd2a8;
+      color: #704a09;
+    }
+
+    .msg.error {
+      background: #f9dfdc;
+      border: 1px solid #ebb7b2;
+      color: #762922;
+    }
+
+    .jobs-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    th,
+    td {
+      padding: 10px 10px;
+      text-align: left;
+      border-bottom: 1px solid #ece7de;
+      vertical-align: top;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: #f8f4ec;
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #5f574d;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: #3f382f;
+      word-break: break-all;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 0.77rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .pending { background: #fdf2dc; color: var(--amber); border-color: #f2d4a1; }
+    .running { background: #ddf3f4; color: #0f6468; border-color: #b6dee0; }
+    .success { background: #deeedf; color: #246d33; border-color: #b9d9bc; }
+    .failed { background: #f6ddda; color: var(--red); border-color: #e8b6b0; }
+    .cancelled { background: #ebe4db; color: #665f56; border-color: #d8cec1; }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .jobs-empty {
+      padding: 22px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 930px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .pair {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <span class="eyebrow">Nugs Downloader API Console</span>
+      <h1>Queue downloads and watch job status live</h1>
+      <p class="sub">Submit a URL with optional quality settings. The job board refreshes every few seconds and shows queue position, progress, and outcomes.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>New Download Job</h2>
+        <p class="hint">If "Download if already downloaded" is disabled, the UI checks history and avoids duplicate successful downloads.</p>
+
+        <form id="job-form">
+          <div class="field">
+            <label for="url">URL</label>
+            <input id="url" name="url" type="url" placeholder="https://play.nugs.net/release/..." required />
+          </div>
+
+          <div class="pair">
+            <div class="field">
+              <label for="video_format">Video quality (optional)</label>
+              <select id="video_format" name="video_format">
+                <option value="">Default from config</option>
+                <option value="1">480p</option>
+                <option value="2">720p</option>
+                <option value="3">1080p</option>
+                <option value="4">1440p</option>
+                <option value="5">4K / best</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="format">Audio format (optional)</label>
+              <select id="format" name="format">
+                <option value="">Default from config</option>
+                <option value="1">16-bit / 44.1k ALAC</option>
+                <option value="2">16-bit / 44.1k FLAC</option>
+                <option value="3">24-bit / 48k MQA</option>
+                <option value="4">360 Reality Audio</option>
+                <option value="5">150 Kbps AAC</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="out_path">Output path (optional)</label>
+            <input id="out_path" name="out_path" type="text" placeholder="Use server default if blank" />
+          </div>
+
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="download_audio" checked /> Download audio</label>
+            <label class="check"><input type="checkbox" id="download_video" checked /> Download video</label>
+            <label class="check"><input type="checkbox" id="download_if_already_downloaded" /> Download if already downloaded</label>
+            <label class="check"><input type="checkbox" id="skip_chapters" /> Skip chapters</label>
+          </div>
+
+          <button class="btn btn-primary" type="submit" id="submit-btn">Create Job</button>
+          <div id="form-message" class="msg"></div>
+        </form>
+      </article>
+
+      <article class="card">
+        <div class="jobs-head">
+          <div>
+            <h2>Current Jobs</h2>
+            <div id="last-updated" class="meta">Refreshing every 4s...</div>
+          </div>
+          <button class="btn btn-muted" id="refresh-btn" type="button">Refresh now</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Progress / Queue</th>
+                <th>Result</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body">
+              <tr><td colspan="6" class="jobs-empty">No jobs yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const pollMs = 4000;
+    const form = document.getElementById("job-form");
+    const formMessage = document.getElementById("form-message");
+    const submitBtn = document.getElementById("submit-btn");
+    const refreshBtn = document.getElementById("refresh-btn");
+    const jobsBody = document.getElementById("jobs-body");
+    const lastUpdated = document.getElementById("last-updated");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "-";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "-";
+      return d.toLocaleString();
+    }
+
+    function statusClass(status) {
+      return ["pending", "running", "success", "failed", "cancelled"].includes(status) ? status : "pending";
+    }
+
+    function setMessage(kind, text) {
+      formMessage.className = `msg show ${kind}`;
+      formMessage.innerHTML = escapeHtml(text);
+    }
+
+    function clearMessage() {
+      formMessage.className = "msg";
+      formMessage.textContent = "";
+    }
+
+    function detailFromErrorPayload(payload, status) {
+      if (!payload) return `Request failed (${status})`;
+      const detail = payload.detail;
+      if (!detail) return `Request failed (${status})`;
+      if (typeof detail === "string") return detail;
+      if (typeof detail === "object" && detail.message) {
+        if (Array.isArray(detail.already_downloaded_urls) && detail.already_downloaded_urls.length) {
+          return `${detail.message}: ${detail.already_downloaded_urls.join(", ")}`;
+        }
+        return detail.message;
+      }
+      return JSON.stringify(detail);
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(detailFromErrorPayload(payload, response.status));
+      }
+      return payload;
+    }
+
+    function buildPayload() {
+      const url = document.getElementById("url").value.trim();
+      const audioFormat = document.getElementById("format").value;
+      const videoFormat = document.getElementById("video_format").value;
+      const outPath = document.getElementById("out_path").value.trim();
+
+      const payload = {
+        urls: [url],
+        download_audio: document.getElementById("download_audio").checked,
+        download_video: document.getElementById("download_video").checked,
+        download_if_already_downloaded: document.getElementById("download_if_already_downloaded").checked,
+        skip_chapters: document.getElementById("skip_chapters").checked,
+      };
+
+      if (audioFormat) payload.format = Number(audioFormat);
+      if (videoFormat) payload.video_format = Number(videoFormat);
+      if (outPath) payload.out_path = outPath;
+      return payload;
+    }
+
+    async function submitJob(event) {
+      event.preventDefault();
+      clearMessage();
+
+      const payload = buildPayload();
+      if (!payload.urls[0]) {
+        setMessage("error", "URL is required.");
+        return;
+      }
+      if (!payload.download_audio && !payload.download_video) {
+        setMessage("error", "At least one of Download audio or Download video must be enabled.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+
+      try {
+        if (!payload.download_if_already_downloaded) {
+          const lookup = await api(`/history/successes?url=${encodeURIComponent(payload.urls[0])}`);
+          if (lookup.previously_downloaded_successfully) {
+            setMessage("warn", "This URL was already downloaded successfully. Enable 'Download if already downloaded' to force a new job.");
+            return;
+          }
+        }
+
+        const created = await api("/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        let note = `Job created: ${created.job_id}`;
+        if (Array.isArray(created.skipped_urls) && created.skipped_urls.length) {
+          note += ` (skipped duplicates: ${created.skipped_urls.join(", ")})`;
+        }
+        setMessage("info", note);
+
+        form.reset();
+        document.getElementById("download_audio").checked = true;
+        document.getElementById("download_video").checked = true;
+        await refreshJobs();
+      } catch (err) {
+        setMessage("error", err.message || "Failed to create job");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create Job";
+      }
+    }
+
+    async function cancelJob(jobId) {
+      try {
+        await api(`/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+        await refreshJobs();
+      } catch (err) {
+        alert(err.message || "Failed to cancel job");
+      }
+    }
+
+    async function deleteJob(jobId) {
+      try {
+        await api(`/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+        await refreshJobs();
+      } catch (err) {
+        alert(err.message || "Failed to delete job");
+      }
+    }
+
+    function renderJobs(jobs, detailsMap) {
+      if (!jobs.length) {
+        jobsBody.innerHTML = '<tr><td colspan="6" class="jobs-empty">No jobs yet.</td></tr>';
+        return;
+      }
+
+      jobsBody.innerHTML = jobs.map((job) => {
+        const detail = detailsMap.get(job.id) || {};
+        const progress = detail.progress || null;
+
+        let progressText = "-";
+        if (job.status === "pending" && job.queue_position) {
+          progressText = `Queue #${job.queue_position}`;
+        } else if (progress) {
+          if (typeof progress.percent === "number") {
+            progressText = `${progress.percent}% ${progress.kind || ""}`.trim();
+          } else if (progress.message) {
+            progressText = progress.message;
+          }
+        }
+
+        let resultText = "-";
+        if (detail.error) {
+          resultText = detail.error;
+        } else if (detail.details && Array.isArray(detail.details.files) && detail.details.files.length) {
+          const first = detail.details.files[0];
+          const fileLabel = first.path ? first.path.split("/").pop() : "file";
+          const kind = first.contains || first.kind || "saved";
+          resultText = `${fileLabel} (${kind})`;
+        } else if (job.status === "success") {
+          resultText = "Completed";
+        }
+
+        let actions = "";
+        if (job.status === "running" || job.status === "pending") {
+          actions += `<button class="btn btn-warn" data-action="cancel" data-job="${escapeHtml(job.id)}">Cancel</button>`;
+        }
+        if (["success", "failed", "cancelled"].includes(job.status)) {
+          actions += `<button class="btn btn-muted" data-action="delete" data-job="${escapeHtml(job.id)}">Delete</button>`;
+        }
+        if (!actions) actions = "-";
+
+        return `
+          <tr>
+            <td class="mono">${escapeHtml(job.id.slice(0, 8))}</td>
+            <td><span class="status ${statusClass(job.status)}">${escapeHtml(job.status)}</span></td>
+            <td>${escapeHtml(fmtDate(job.created_at))}</td>
+            <td>${escapeHtml(progressText)}</td>
+            <td>${escapeHtml(resultText)}</td>
+            <td><div class="actions">${actions}</div></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function refreshJobs() {
+      try {
+        const jobs = await api("/jobs");
+        jobs.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+        const details = await Promise.all(
+          jobs.map((job) => api(`/jobs/${encodeURIComponent(job.id)}`).catch(() => null))
+        );
+
+        const detailsMap = new Map();
+        jobs.forEach((job, idx) => {
+          detailsMap.set(job.id, details[idx]);
+        });
+
+        renderJobs(jobs, detailsMap);
+        lastUpdated.textContent = `Refreshing every ${Math.round(pollMs / 1000)}s • Last update ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        lastUpdated.textContent = `Refresh error: ${err.message}`;
+      }
+    }
+
+    jobsBody.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const action = target.getAttribute("data-action");
+      const jobId = target.getAttribute("data-job");
+      if (!action || !jobId) return;
+
+      if (action === "cancel") {
+        await cancelJob(jobId);
+      } else if (action === "delete") {
+        await deleteJob(jobId);
+      }
+    });
+
+    form.addEventListener("submit", submitJob);
+    refreshBtn.addEventListener("click", refreshJobs);
+
+    refreshJobs();
+    setInterval(refreshJobs, pollMs);
+  </script>
+</body>
+</html>

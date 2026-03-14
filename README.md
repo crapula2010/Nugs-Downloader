@@ -81,6 +81,8 @@ Start the API server:
 ./p3venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8090
 ```
 
+Open the web interface at `http://127.0.0.1:8090/`.
+
 Main endpoints:
 
 - `POST /jobs`

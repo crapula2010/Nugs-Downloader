@@ -25,11 +25,13 @@ from subprocess import PIPE, Popen
 from typing import Deque, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 # --- Config ----------------------------------------------------------------
 
 WORKDIR = Path(__file__).resolve().parent
+WEB_INDEX_PATH = WORKDIR / "web" / "index.html"
 
 # Use the same Python interpreter that runs this server (typically the virtualenv)
 import sys
@@ -68,6 +70,10 @@ class DownloadRequest(BaseModel):
     out_path: Optional[str] = Field(None, description="Output folder")
     download_audio: Optional[bool] = Field(True, description="Download audio tracks")
     download_video: Optional[bool] = Field(True, description="Download video tracks")
+    download_if_already_downloaded: Optional[bool] = Field(
+        False,
+        description="If false, URLs that already completed successfully will be skipped",
+    )
     skip_chapters: Optional[bool] = Field(False, description="Skip embedding chapters")
 
 
@@ -165,6 +171,30 @@ def _history_upsert(job: Job) -> None:
 
 
 _init_history_db()
+
+
+def _get_successfully_downloaded_urls() -> set[str]:
+    with history_lock:
+        with sqlite3.connect(HISTORY_DB_PATH) as conn:
+            rows = conn.execute(
+                """
+                SELECT urls_json
+                FROM download_history
+                WHERE status = ?
+                """,
+                (JobStatus.SUCCESS.value,),
+            ).fetchall()
+
+    success_urls: set[str] = set()
+    for row in rows:
+        try:
+            row_urls = json.loads(row[0] or "[]")
+        except json.JSONDecodeError:
+            continue
+        for url in row_urls:
+            if isinstance(url, str):
+                success_urls.add(_normalize_url(url))
+    return success_urls
 
 
 def _make_cmd(req: DownloadRequest) -> List[str]:
@@ -310,12 +340,43 @@ def _run_job(job: Job) -> None:
         _dispatch_next_jobs()
 
 
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def web_ui() -> str:
+    if not WEB_INDEX_PATH.exists():
+        raise HTTPException(status_code=404, detail="Web UI file not found")
+    return WEB_INDEX_PATH.read_text(encoding="utf-8")
+
+
 @app.post("/jobs", status_code=201)
 def create_job(req: DownloadRequest):
     try:
         _make_cmd(req)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    skipped_urls: List[str] = []
+    if not req.download_if_already_downloaded:
+        successful_urls = _get_successfully_downloaded_urls()
+        filtered_urls: List[str] = []
+        for raw_url in req.urls:
+            normalized_url = _normalize_url(raw_url)
+            if normalized_url in successful_urls:
+                skipped_urls.append(normalized_url)
+            else:
+                filtered_urls.append(raw_url)
+
+        if not filtered_urls:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "All requested URLs were already downloaded successfully",
+                    "already_downloaded_urls": skipped_urls,
+                },
+            )
+
+        req_data = req.model_dump() if hasattr(req, "model_dump") else req.dict()  # type: ignore[attr-defined]
+        req_data["urls"] = filtered_urls
+        req = DownloadRequest(**req_data)
 
     job_id = str(uuid.uuid4())
     job = Job(id=job_id, request=req)
@@ -336,7 +397,12 @@ def create_job(req: DownloadRequest):
     if should_start:
         _start_job(job)
 
-    return {"job_id": job_id, "status": job.status}
+    return {
+        "job_id": job_id,
+        "status": job.status,
+        "queued_urls": [_normalize_url(u) for u in req.urls],
+        "skipped_urls": skipped_urls,
+    }
 
 
 def _count_running_jobs() -> int:
