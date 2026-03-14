@@ -120,10 +120,13 @@ Build the image:
 docker build -f docker/Dockerfile -t nugs-downloader:latest .
 ```
 
-Run the API container directly:
+Run the API container directly.
+
+Linux/macOS shell:
 
 ```bash
 mkdir -p "Nugs downloads"
+cp config.example.json config.json
 touch download_history.sqlite3
 
 docker run --rm \
@@ -134,12 +137,39 @@ docker run --rm \
   nugs-downloader:latest
 ```
 
-Or run with Docker Compose:
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force -Path ".\Nugs downloads" | Out-Null
+Copy-Item .\config.example.json .\config.json -Force
+New-Item -ItemType File -Force -Path .\download_history.sqlite3 | Out-Null
+
+docker run --rm `
+  -p 8090:8090 `
+  -v "${PWD}/config.json:/app/config.json:ro" `
+  -v "${PWD}/download_history.sqlite3:/app/download_history.sqlite3" `
+  -v "${PWD}/Nugs downloads:/app/Nugs downloads" `
+  nugs-downloader:latest
+```
+
+`config.json` and `download_history.sqlite3` must be files on the host. If either path exists as a directory, delete it and recreate it as a file.
+
+Or run with Docker Compose.
+
+Linux/macOS shell:
 
 ```bash
-mkdir -p "Nugs downloads"
+cp config.example.json config.json
 touch download_history.sqlite3
 docker compose -f docker/docker-compose.yml up -d --build
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .\config.example.json .\config.json -Force
+New-Item -ItemType File -Force -Path .\download_history.sqlite3 | Out-Null
+docker compose -f .\docker\docker-compose.yml up -d --build
 ```
 
 Stop compose service:
