@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+requests
+m3u8
+humanize
+pycryptodome

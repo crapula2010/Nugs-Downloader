@@ -1,0 +1,33 @@
+# Python environments and caches
+p3venv/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test and runtime generated output
+test-output/
+test-output-*/
+test-output*/
+Nugs downloads/
+logs/
+*.log
+
+# Local databases and state
+*.db
+*.sqlite
+*.sqlite3
+
+# Local secrets and machine-specific config
+config.json
+config.local.json
+.env
+.env.*
+
+# Local ffmpeg binaries
+ffmpeg
+ffmpeg.exe
+ffprobe
+ffprobe.exe
