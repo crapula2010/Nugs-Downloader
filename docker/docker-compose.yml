@@ -1,0 +1,14 @@
+services:
+  nugs-downloader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: nugs-downloader:latest
+    container_name: nugs-downloader
+    ports:
+      - "8090:8090"
+    volumes:
+      - "../config.json:/app/config.json:ro"
+      - "../download_history.sqlite3:/app/download_history.sqlite3"
+      - "../Nugs downloads:/app/Nugs downloads"
+    restart: unless-stopped

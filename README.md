@@ -112,6 +112,44 @@ curl -sS -X POST http://127.0.0.1:8090/jobs \
 
 `POST /config` controls the server's concurrency limit. Jobs above the limit stay queued until a slot is free. Download history is stored in `download_history.sqlite3`.
 
+## Docker
+
+Build the image:
+
+```bash
+docker build -f docker/Dockerfile -t nugs-downloader:latest .
+```
+
+Run the API container directly:
+
+```bash
+mkdir -p "Nugs downloads"
+touch download_history.sqlite3
+
+docker run --rm \
+  -p 8090:8090 \
+  -v "$(pwd)/config.json:/app/config.json:ro" \
+  -v "$(pwd)/download_history.sqlite3:/app/download_history.sqlite3" \
+  -v "$(pwd)/Nugs downloads:/app/Nugs downloads" \
+  nugs-downloader:latest
+```
+
+Or run with Docker Compose:
+
+```bash
+mkdir -p "Nugs downloads"
+touch download_history.sqlite3
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+Stop compose service:
+
+```bash
+docker compose -f docker/docker-compose.yml down
+```
+
+The web UI is available at `http://127.0.0.1:8090/`.
+
 ## Install As Linux Service
 
 You can install the API as a systemd service with [scripts/install_linux_service.sh](scripts/install_linux_service.sh).
