@@ -1,0 +1,151 @@
+name: Package Apps
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/package.yml"
+      - "main.py"
+      - "server.py"
+      - "nugs_credentials.py"
+      - "requirements.txt"
+      - "packaging/**"
+      - "tests/**"
+      - "web/**"
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  macos-dmg:
+    name: macOS DMG
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build macOS packages
+        run: python packaging/build_packages.py
+
+      - name: Smoke test macOS app launcher
+        run: |
+          HOME="$RUNNER_TEMP/nugs-smoke-home" NUGS_LAUNCHER_SMOKE=1 "dist/staging/macos/Nugs Downloader.app/Contents/MacOS/Nugs Downloader"
+
+      - name: Verify clean macOS artifacts
+        run: |
+          python -m zipfile -l dist/NugsDownloader-macOS-app.zip
+          hdiutil attach dist/NugsDownloader-macOS.dmg -mountpoint /tmp/nugs-dmg-check -nobrowse -readonly
+          find /tmp/nugs-dmg-check -maxdepth 8 -type f | sort
+          ! find /tmp/nugs-dmg-check -name config.json -o -name token.md -o -name nugs_credentials.enc -o -name nugs_credentials.key -o -name download_history.sqlite3 | grep .
+          hdiutil detach /tmp/nugs-dmg-check
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: NugsDownloader-macOS-dmg
+          path: dist/NugsDownloader-macOS.dmg
+          if-no-files-found: error
+
+      - name: Upload macOS app zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: NugsDownloader-macOS-app
+          path: dist/NugsDownloader-macOS-app.zip
+          if-no-files-found: error
+
+  windows-exe:
+    name: Windows EXE
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build portable Windows package
+        run: python packaging/build_packages.py
+
+      - name: Expand portable package
+        shell: pwsh
+        run: |
+          Expand-Archive -Path dist/NugsDownloader-Windows-portable.zip -DestinationPath dist/windows-expanded -Force
+
+      - name: Build Windows exe
+        shell: pwsh
+        working-directory: dist/windows-expanded/NugsDownloader
+        run: ./build-exe.ps1
+
+      - name: Copy Windows exe
+        shell: pwsh
+        run: |
+          Copy-Item "dist/windows-expanded/NugsDownloader/dist/Nugs Downloader.exe" "dist/Nugs Downloader.exe"
+
+      - name: Smoke test Windows exe launcher
+        shell: pwsh
+        run: |
+          $env:NUGS_LAUNCHER_SMOKE = "1"
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\NugsSmoke"
+          & "dist/Nugs Downloader.exe"
+
+      - name: Verify clean Windows artifacts
+        shell: pwsh
+        run: |
+          python -m zipfile -l dist/NugsDownloader-Windows-portable.zip
+          $forbidden = @("config.json", "token.md", "nugs_credentials.enc", "nugs_credentials.key", "download_history.sqlite3")
+          foreach ($name in $forbidden) {
+            $matches = Get-ChildItem -Path dist/windows-expanded/NugsDownloader -Recurse -Force -Filter $name
+            if ($matches) {
+              throw "Forbidden file included in Windows package: $name"
+            }
+          }
+
+      - name: Upload Windows exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: NugsDownloader-Windows-exe
+          path: dist/Nugs Downloader.exe
+          if-no-files-found: error
+
+      - name: Upload Windows portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: NugsDownloader-Windows-portable
+          path: dist/NugsDownloader-Windows-portable.zip
+          if-no-files-found: error

@@ -1,4 +1,5 @@
 # Python environments and caches
+.DS_Store
 p3venv/
 .venv/
 venv/
@@ -13,7 +14,9 @@ test-output-*/
 test-output*/
 Nugs downloads/
 logs/
+data/
 *.log
+dist/staging/
 
 # Local databases and state
 *.db
@@ -23,6 +26,8 @@ logs/
 # Local secrets and machine-specific config
 config.json
 config.local.json
+nugs_credentials.enc
+nugs_credentials.key
 .env
 .env.*
 

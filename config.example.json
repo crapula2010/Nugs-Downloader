@@ -1,9 +1,8 @@
 {
-  "email": "your-email@example.com",
-  "password": "your-password",
   "format": 4,
   "videoFormat": 5,
+  "audioOutputFormat": "source",
+  "videoOutputFormat": "mkv",
   "outPath": "Nugs downloads",
-  "token": "",
-  "useFfmpegEnvVar": false
+  "useFfmpegEnvVar": true
 }

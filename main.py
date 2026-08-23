@@ -24,7 +24,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -32,6 +32,7 @@ import humanize
 import m3u8
 import requests
 from Crypto.Cipher import AES
+from nugs_credentials import read_credentials
 from urllib.parse import parse_qs, urlparse, urlencode
 
 # --- Constants --------------------------------------------------------------
@@ -53,7 +54,7 @@ bitrateRegex = r"[\w]+(?:_(\d+)k_v\d+)"
 
 # Regex patterns used to determine the type of URL input.
 regexStrings = [
-    r"^https://play.nugs.net/release/(\d+)$",
+    r"^https://play.nugs.net/(?:watch/)?release/(\d+)$",
     r"^https://play.nugs.net/#/playlists/playlist/(\d+)$",
     r"^https://play.nugs.net/library/playlist/(\d+)$",
     r"(^https://2nu.gs/[a-zA-Z\d]+$)",
@@ -103,11 +104,14 @@ class Config:
     videoFormat: int = 2
     wantRes: str = ""
     token: str = ""
-    useFfmpegEnvVar: bool = False
+    useFfmpegEnvVar: bool = True
     ffmpegNameStr: str = ""
     forceVideo: bool = False
     skipVideos: bool = False
     skipChapters: bool = False
+    audioOutputFormat: str = "source"
+    videoOutputFormat: str = "mkv"
+    trackIds: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -119,6 +123,9 @@ class Args:
     ForceVideo: bool
     SkipVideos: bool
     SkipChapters: bool
+    AudioOutputFormat: Optional[str]
+    VideoOutputFormat: Optional[str]
+    TrackIds: List[int]
 
 
 @dataclass
@@ -177,8 +184,18 @@ def process_urls(urls: List[str]) -> List[str]:
 
 def read_config() -> Config:
     config_path = get_config_path()
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+    credentials = read_credentials(config_path)
+    if credentials.get("email"):
+        data["email"] = credentials["email"]
+    if credentials.get("password"):
+        data["password"] = credentials["password"]
+    if credentials.get("token"):
+        data["token"] = credentials["token"]
     return Config(**data)
 
 
@@ -197,6 +214,12 @@ def parse_args() -> Args:
                         help="Skip videos in artist URLs")
     parser.add_argument("--skip-chapters", action="store_true",
                         help="Skip embedding chapters into video")
+    parser.add_argument("--audio-output-format", choices=("source", "mp3", "flac", "m4a"), default=None,
+                        help="Final audio output format")
+    parser.add_argument("--video-output-format", choices=("mkv", "mp4", "mov"), default=None,
+                        help="Final video container")
+    parser.add_argument("--track-ids", default="",
+                        help="Comma-separated Nugs track IDs to download from a release")
     args = parser.parse_args()
     return Args(
         Urls=args.urls,
@@ -206,6 +229,9 @@ def parse_args() -> Args:
         ForceVideo=args.force_video,
         SkipVideos=args.skip_videos,
         SkipChapters=args.skip_chapters,
+        AudioOutputFormat=args.audio_output_format,
+        VideoOutputFormat=args.video_output_format,
+        TrackIds=[int(v) for v in args.track_ids.split(",") if v.strip().isdigit()],
     )
 
 
@@ -216,6 +242,41 @@ def make_dirs(path: str) -> None:
 def file_exists(path: str) -> bool:
     p = Path(path)
     return p.is_file()
+
+
+def replace_ext(path: Path, ext: str) -> Path:
+    return path.with_suffix("." + ext.lstrip("."))
+
+
+def run_ffmpeg(args: List[str]) -> None:
+    import subprocess
+
+    proc = subprocess.Popen(args, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+    _, stderr = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(stderr.decode("utf-8", errors="ignore"))
+
+
+def convert_audio_file(src_path: Path, output_format: str, ffmpeg_name: str) -> Path:
+    if output_format == "source":
+        return src_path
+
+    dst_path = replace_ext(src_path, output_format)
+    if dst_path == src_path:
+        return src_path
+
+    codec_args = {
+        "mp3": ["-codec:a", "libmp3lame", "-q:a", "2"],
+        "flac": ["-codec:a", "flac"],
+        "m4a": ["-codec:a", "aac", "-b:a", "256k"],
+    }[output_format]
+    run_ffmpeg([ffmpeg_name, "-hide_banner", "-y", "-i", str(src_path), *codec_args, str(dst_path)])
+    src_path.unlink(missing_ok=True)
+    return dst_path
+
+
+def package_video_file(ts_path: str, out_path: str, ffmpeg_name: str) -> None:
+    run_ffmpeg([ffmpeg_name, "-hide_banner", "-y", "-i", ts_path, "-c", "copy", out_path])
 
 
 def sanitise(filename: str) -> str:
@@ -290,8 +351,8 @@ def get_plan(sub_info: Dict[str, Any]) -> Tuple[str, bool]:
 
 
 def parse_timestamps(start: str, end: str) -> Tuple[str, str]:
-    start_ts = int(datetime.strptime(start, layout).timestamp())
-    end_ts = int(datetime.strptime(end, layout).timestamp())
+    start_ts = int(datetime.strptime(start, layout).replace(tzinfo=timezone.utc).timestamp())
+    end_ts = int(datetime.strptime(end, layout).replace(tzinfo=timezone.utc).timestamp())
     return str(start_ts), str(end_ts)
 
 
@@ -372,7 +433,8 @@ def get_artist_meta(artist_id: str) -> List[Dict[str, Any]]:
         if r.status_code != 200:
             raise RuntimeError(f"Artist meta failed: {r.status_code} {r.reason}")
         obj = r.json()
-        containers = obj.get("Response", {}).get("Containers", [])
+        response = obj.get("Response", {})
+        containers = response.get("Containers") or response.get("containers") or []
         if not containers:
             break
         all_meta.append(obj)
@@ -395,6 +457,14 @@ def get_purchased_man_url(sku_id: int, show_id: str, user_id: str, ugu_id: str) 
     return r.json()["fileURL"]
 
 
+def parse_stream_response(resp_text: str) -> Dict[str, Any]:
+    text = resp_text.strip()
+    match = re.match(r"^[^(]+\((.*)\)\s*;?$", text, re.S)
+    if match:
+        text = match.group(1)
+    return json.loads(text)
+
+
 def get_stream_meta(track_id: int, sku_id: int, fmt: int, stream_params: StreamParams) -> str:
     params: Dict[str, Any] = {
         "app": "1",
@@ -412,7 +482,27 @@ def get_stream_meta(track_id: int, sku_id: int, fmt: int, stream_params: StreamP
     r = session.get(streamApiBase + "bigriver/subPlayer.aspx", params=params, headers=headers)
     if r.status_code != 200:
         raise RuntimeError(f"Stream meta failed: {r.status_code} {r.reason}")
-    return r.json()["streamLink"]
+    return parse_stream_response(r.text).get("streamLink") or ""
+
+
+def get_video_stream_meta(container_id: int, sku_id: int, stream_params: StreamParams) -> str:
+    params: Dict[str, Any] = {
+        "skuID": sku_id,
+        "containerID": container_id,
+        "subCostplanIDAccessList": stream_params.SubCostplanIDAccessList,
+        "startDateStamp": stream_params.StartStamp,
+        "endDateStamp": stream_params.EndStamp,
+        "nn_userID": stream_params.UserID,
+        "subscriptionID": stream_params.SubscriptionID,
+        "platformID": "1",
+        "app": "1",
+        "v": "2",
+    }
+    headers = {"User-Agent": userAgentTwo}
+    r = session.get(streamApiBase + "bigriver/subPlayer.aspx", params=params, headers=headers)
+    if r.status_code != 200:
+        raise RuntimeError(f"Video stream meta failed: {r.status_code} {r.reason}")
+    return parse_stream_response(r.text).get("streamLink") or ""
 
 
 def query_quality(stream_url: str) -> Optional[Dict[str, Any]]:
@@ -582,7 +672,13 @@ def process_track(fol_path: str, track_num: int, track_total: int, cfg: Config, 
         hls_only(str(track_path), chosen_qual["URL"], cfg.ffmpegNameStr)
     else:
         download_track(str(track_path), chosen_qual["URL"])
-    emit_file_event("created", "audio", str(track_path), {"format": chosen_qual.get("Specs", "")})
+    final_track_path = convert_audio_file(track_path, cfg.audioOutputFormat, cfg.ffmpegNameStr)
+    emit_file_event(
+        "created",
+        "audio",
+        str(final_track_path),
+        {"format": chosen_qual.get("Specs", ""), "output_format": cfg.audioOutputFormat},
+    )
 
 
 def get_video_sku(products: List[Dict[str, Any]]) -> int:
@@ -743,12 +839,19 @@ def album(album_id: str, cfg: Config, stream_params: StreamParams, art_resp: Opt
     else:
         meta = art_resp or {}
     tracks = meta.get("songs", [])
+    if cfg.trackIds:
+        allowed_track_ids = set(cfg.trackIds)
+        tracks = [track for track in tracks if int(track.get("trackID", 0)) in allowed_track_ids]
 
     track_total = len(tracks)
     sku_id = get_video_sku(meta.get("products", []))
 
     if sku_id == 0 and track_total < 1:
         raise RuntimeError("release has no tracks or videos")
+
+    if cfg.forceVideo and sku_id == 0:
+        print("No video available, skipped audio because video-only mode is selected.")
+        return
 
     should_try_video_after_audio = False
 
@@ -788,7 +891,8 @@ def album(album_id: str, cfg: Config, stream_params: StreamParams, art_resp: Opt
 def get_album_total(meta: List[Dict[str, Any]]) -> int:
     total = 0
     for m in meta:
-        total += len(m.get("Response", {}).get("Containers", []))
+        response = m.get("Response", {})
+        total += len(response.get("Containers") or response.get("containers") or [])
     return total
 
 
@@ -796,23 +900,30 @@ def artist(artist_id: str, cfg: Config, stream_params: StreamParams) -> None:
     meta = get_artist_meta(artist_id)
     if not meta:
         raise RuntimeError("The API didn't return any artist metadata.")
-    print(meta[0].get("Response", {}).get("Containers", [])[0].get("ArtistName", ""))
+    first_response = meta[0].get("Response", {})
+    first_containers = first_response.get("Containers") or first_response.get("containers") or []
+    print(first_containers[0].get("ArtistName") or first_containers[0].get("artistName") or "")
     album_total = get_album_total(meta)
     idx = 1
     for m in meta:
-        for container in m.get("Response", {}).get("Containers", []):
+        response = m.get("Response", {})
+        for container in response.get("Containers") or response.get("containers") or []:
             print(f"Item {idx} of {album_total}:")
             idx += 1
             try:
                 if cfg.skipVideos:
                     album("", cfg, stream_params, container)
                 else:
-                    album(str(container.get("ContainerID", "")), cfg, stream_params, None)
+                    album(str(container.get("ContainerID") or container.get("containerID") or ""), cfg, stream_params, None)
             except Exception as e:
                 handle_err("Item failed.", e, False)
 
 
 def playlist(plist_id: str, legacy_token: str, cfg: Config, stream_params: StreamParams, cat: bool) -> None:
+    if cfg.forceVideo:
+        print("Playlist contains audio tracks only, skipped because video-only mode is selected.")
+        return
+
     obj = get_plist_meta(plist_id, cfg.email, legacy_token, cat)
     meta = obj.get("Response", {})
     plist_name = meta.get("playListName", "")
@@ -856,6 +967,10 @@ def paid_lstream(query: str, ugu_id: str, cfg: Config, stream_params: StreamPara
 
 
 def video(video_id: str, ugu_id: str, cfg: Config, stream_params: StreamParams, meta: Optional[Dict[str, Any]], is_lstream: bool) -> None:
+    if cfg.skipVideos:
+        print("Video skipped because audio-only mode is selected.")
+        return
+
     if meta is None:
         obj = get_album_meta(video_id)
         meta = obj.get("Response", {})
@@ -875,7 +990,7 @@ def video(video_id: str, ugu_id: str, cfg: Config, stream_params: StreamParams, 
         raise RuntimeError("no video available")
 
     if not ugu_id:
-        manifest_url = get_stream_meta(meta.get("containerID", 0), sku_id, 0, stream_params)
+        manifest_url = get_video_stream_meta(meta.get("containerID", 0), sku_id, stream_params)
     else:
         manifest_url = get_purchased_man_url(sku_id, video_id, stream_params.UserID, ugu_id)
 
@@ -885,11 +1000,11 @@ def video(video_id: str, ugu_id: str, cfg: Config, stream_params: StreamParams, 
     variant, ret_res = choose_variant(manifest_url, cfg.wantRes)
     vid_path_no_ext = Path(cfg.outPath) / sanitise(f"{video_fname}_{ret_res}")
     vid_ts = str(vid_path_no_ext) + ".ts"
-    vid_mkv = str(vid_path_no_ext) + ".mkv"
+    vid_out = str(vid_path_no_ext) + f".{cfg.videoOutputFormat}"
 
-    if Path(vid_mkv).exists():
-        print(f"Video already exists locally: {vid_mkv}")
-        emit_file_event("exists", "video", vid_mkv)
+    if Path(vid_out).exists():
+        print(f"Video already exists locally: {vid_out}")
+        emit_file_event("exists", "video", vid_out)
         return
 
     if Path(vid_ts).exists():
@@ -916,10 +1031,10 @@ def video(video_id: str, ugu_id: str, cfg: Config, stream_params: StreamParams, 
         download_video(vid_ts, man_base + seg_urls[0])
     emit_file_event("created", "video_ts", vid_ts)
 
-    print("Packaging TS into MKV container...")
-    ts_to_mkv(vid_ts, vid_mkv, cfg.ffmpegNameStr)
-    emit_file_event("created", "video", vid_mkv)
-    print(f"Saved video to: {vid_mkv}")
+    print(f"Packaging TS into {cfg.videoOutputFormat.upper()} container...")
+    package_video_file(vid_ts, vid_out, cfg.ffmpegNameStr)
+    emit_file_event("created", "video", vid_out, {"output_format": cfg.videoOutputFormat})
+    print(f"Saved video to: {vid_out}")
     Path(vid_ts).unlink(missing_ok=True)
 
 
@@ -930,10 +1045,18 @@ def parse_cfg() -> Config:
         cfg.format = args.Format
     if args.VideoFormat != -1:
         cfg.videoFormat = args.VideoFormat
+    if args.AudioOutputFormat:
+        cfg.audioOutputFormat = args.AudioOutputFormat
+    if args.VideoOutputFormat:
+        cfg.videoOutputFormat = args.VideoOutputFormat
     if not (1 <= cfg.format <= 5):
         raise ValueError("track Format must be between 1 and 5")
     if not (1 <= cfg.videoFormat <= 5):
         raise ValueError("video format must be between 1 and 5")
+    if cfg.audioOutputFormat not in ("source", "mp3", "flac", "m4a"):
+        raise ValueError("audio output format must be source, mp3, flac, or m4a")
+    if cfg.videoOutputFormat not in ("mkv", "mp4", "mov"):
+        raise ValueError("video output format must be mkv, mp4, or mov")
     cfg.wantRes = resolveRes[cfg.videoFormat]
     if args.OutPath:
         cfg.outPath = args.OutPath
@@ -941,11 +1064,13 @@ def parse_cfg() -> Config:
         cfg.outPath = "Nugs downloads"
     if cfg.token:
         cfg.token = cfg.token.removeprefix("Bearer ")
-    cfg.ffmpegNameStr = "ffmpeg" if cfg.useFfmpegEnvVar else "./ffmpeg"
+    local_ffmpeg = Path("./ffmpeg")
+    cfg.ffmpegNameStr = "./ffmpeg" if not cfg.useFfmpegEnvVar and local_ffmpeg.exists() else "ffmpeg"
     cfg.urls = process_urls(args.Urls)
     cfg.forceVideo = args.ForceVideo
     cfg.skipVideos = args.SkipVideos
     cfg.skipChapters = args.SkipChapters
+    cfg.trackIds = args.TrackIds
     return cfg
 
 
