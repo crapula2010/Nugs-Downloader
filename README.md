@@ -273,17 +273,15 @@ Download history is stored in `download_history.sqlite3`.
 
 ## Docker
 
-Build the image:
-
-```bash
-docker build -f docker/Dockerfile -t nugs-downloader:latest .
-```
-
-Run with Docker Compose:
+Create the state folders first, so they are owned by you rather than root:
 
 ```bash
 mkdir -p data/private_sources/nugs/inbox data/private_sources/nugs/secrets
-touch download_history.sqlite3
+```
+
+Build and start the service:
+
+```bash
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
@@ -292,20 +290,37 @@ Windows PowerShell:
 ```powershell
 New-Item -ItemType Directory -Force -Path ".\data\private_sources\nugs\inbox" | Out-Null
 New-Item -ItemType Directory -Force -Path ".\data\private_sources\nugs\secrets" | Out-Null
-New-Item -ItemType File -Force -Path .\download_history.sqlite3 | Out-Null
 docker compose -f .\docker\docker-compose.yml up -d --build
-```
-
-Stop the service:
-
-```bash
-docker compose -f docker/docker-compose.yml down
 ```
 
 Open:
 
 ```text
 http://127.0.0.1:8090/
+```
+
+From another machine on the network, use the Docker host's name or IP instead of `127.0.0.1`. The web UI has no login of its own, so do not expose the port to the internet.
+
+Optional settings, as environment variables or in `docker/.env`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NUGS_DOWNLOADS_DIR` | `../data/private_sources/nugs/inbox` | Host folder that receives downloads (relative paths are relative to `docker/`) |
+| `NUGS_PORT` | `8090` | Host port for the web UI |
+| `PUID` / `PGID` | `1000` / `1000` | User and group the container runs as; match `id -u` / `id -g` |
+
+Settings, the encrypted login, and download history are kept in `data/private_sources/nugs/` and survive rebuilds.
+
+View logs:
+
+```bash
+docker compose -f docker/docker-compose.yml logs -f
+```
+
+Stop the service:
+
+```bash
+docker compose -f docker/docker-compose.yml down
 ```
 
 ## Packaging

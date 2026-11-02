@@ -5,13 +5,18 @@ services:
       dockerfile: docker/Dockerfile
     image: nugs-downloader:latest
     container_name: nugs-downloader
+    # Run as the host user so downloaded files are not owned by root.
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
-      - "8090:8090"
+      - "${NUGS_PORT:-8090}:8090"
     environment:
       NUGS_CONFIG_PATH: /app/data/private_sources/nugs/config.json
       NUGS_CREDENTIALS_PATH: /app/data/private_sources/nugs/secrets/nugs_credentials.enc
       NUGS_CREDENTIALS_KEY_PATH: /app/data/private_sources/nugs/secrets/nugs_credentials.key
+      NUGS_HISTORY_DB_PATH: /app/data/private_sources/nugs/download_history.sqlite3
+      NUGS_DEFAULT_OUT_PATH: /app/data/private_sources/nugs/inbox
     volumes:
-      - "../download_history.sqlite3:/app/download_history.sqlite3"
       - "../data/private_sources/nugs:/app/data/private_sources/nugs"
+      # Set NUGS_DOWNLOADS_DIR to send downloads somewhere else on the host.
+      - "${NUGS_DOWNLOADS_DIR:-../data/private_sources/nugs/inbox}:/app/data/private_sources/nugs/inbox"
     restart: unless-stopped
