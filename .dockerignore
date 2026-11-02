@@ -16,6 +16,11 @@ test-output/
 test-output-*/
 test-output*/
 data/
+dist/
+packaging/
+tests/
+scripts/
+docker/
 
 *.db
 *.sqlite
@@ -23,6 +28,8 @@ data/
 
 config.json
 config.local.json
+nugs_credentials.enc
+nugs_credentials.key
 .env
 .env.*
 
